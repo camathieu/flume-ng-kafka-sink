@@ -47,14 +47,28 @@ public class KafkaSink extends AbstractSink implements Configurable {
 				Event event = channel.take();
 				if (event == null)
 					break;
-				String key = event.getHeaders().get("key");
-				if (key == null) {
+
+                String t;
+                if (topic == null || topic.isEmpty()) {
+                    t = event.getHeaders().get("topic");
+                    if (t == null || t.isEmpty()) {
+                        log.error(getName() + " " + this
+                                + "Unable to send event without topic header");
+                        continue;
+                    }
+                } else {
+                    t = topic;
+                }
+
+                String key = event.getHeaders().get("key");
+
+                if (key == null) {
 					batch.add(
-                        new KeyedMessage<byte[], byte[]>(topic, event.getBody())
+                        new KeyedMessage<byte[], byte[]>(t, event.getBody())
                     );
 				} else {
 					batch.add(
-                        new KeyedMessage<byte[], byte[]>(topic, key.getBytes(), event.getBody())
+                        new KeyedMessage<byte[], byte[]>(t, key.getBytes(), event.getBody())
                     );
 				}
 			}
@@ -96,27 +110,29 @@ public class KafkaSink extends AbstractSink implements Configurable {
 
 	@Override
 	public void configure(final Context context) {
-
-		Preconditions.checkState(context.getString("topic") != null,
-				"The parameter topic must be specified");
-
 		if (sinkCounter == null) {
 			sinkCounter = new SinkCounter(getName());
 		}
 
 		props = new Properties();
+		final Properties producer_props = new Properties();
 		Map<String, String> contextMap = context.getParameters();
 		for (String key : contextMap.keySet()) {
-			if (!key.equals("type") && 
-                !key.equals("channel") && 
-                !key.equals("topic") && 
-                !key.equals("batch.size")) {
+			if (key.equals("type") ||
+                		key.equals("channel") ||
+                		key.equals("topic") ||
+                		key.equals("batch.size")) {
 
 				props.setProperty(key, context.getString(key));
 				log.info("key={},value={}", key, context.getString(key));
 			}
+			else
+			{
+				producer_props.setProperty(key, context.getString(key));
+                                log.info("key={},value={}", key, context.getString(key));
+			}
 		}
-		ProducerConfig config = new ProducerConfig(props);
+		ProducerConfig config = new ProducerConfig(producer_props);
 		producer = new Producer<byte[], byte[]>(config);
 	}
 
